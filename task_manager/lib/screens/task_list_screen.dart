@@ -17,6 +17,12 @@ class _TaskListScreenState extends State<TaskListScreen> {
   // service instance used for firestore actions
   final TaskService _taskService = TaskService();
 
+  // local map tracks which task tiles are expanded
+  final Map<String, bool> _expandedTasks = {};
+
+  // local map stores one controller per task for subtask input
+  final Map<String, TextEditingController> _subtaskControllers = {};
+
   // add a new task to firestore
   Future<void> _addTask() async {
     final String title = _taskController.text.trim();
@@ -54,10 +60,70 @@ class _TaskListScreenState extends State<TaskListScreen> {
     await _taskService.deleteTask(taskId);
   }
 
+  // return a controller for a specific task's subtask field
+  TextEditingController _getSubtaskController(String taskId) {
+    if (!_subtaskControllers.containsKey(taskId)) {
+      _subtaskControllers[taskId] = TextEditingController();
+    }
+    return _subtaskControllers[taskId]!;
+  }
+
+  // add a nested subtask under a parent task
+  Future<void> _addSubtask(Task parentTask) async {
+    final controller = _getSubtaskController(parentTask.id);
+    final String subtaskTitle = controller.text.trim();
+
+    // block empty subtask submissions
+    if (subtaskTitle.isEmpty) return;
+
+    final Task newSubtask = Task(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      title: subtaskTitle,
+      isCompleted: false,
+      subtasks: [],
+    );
+
+    final List<Task> updatedSubtasks = [...parentTask.subtasks, newSubtask];
+
+    final Task updatedTask = Task(
+      id: parentTask.id,
+      title: parentTask.title,
+      isCompleted: parentTask.isCompleted,
+      subtasks: updatedSubtasks,
+    );
+
+    await _taskService.updateTask(updatedTask);
+
+    // clear input after successful add
+    controller.clear();
+  }
+
+  // remove a subtask from a parent task
+  Future<void> _deleteSubtask(Task parentTask, String subtaskId) async {
+    final List<Task> updatedSubtasks = parentTask.subtasks
+        .where((subtask) => subtask.id != subtaskId)
+        .toList();
+
+    final Task updatedTask = Task(
+      id: parentTask.id,
+      title: parentTask.title,
+      isCompleted: parentTask.isCompleted,
+      subtasks: updatedSubtasks,
+    );
+
+    await _taskService.updateTask(updatedTask);
+  }
+
   @override
   void dispose() {
-    // dispose controller to prevent memory leaks
+    // dispose main controller to prevent memory leaks
     _taskController.dispose();
+
+    // dispose all subtask controllers
+    for (final controller in _subtaskControllers.values) {
+      controller.dispose();
+    }
+
     super.dispose();
   }
 
@@ -129,28 +195,122 @@ class _TaskListScreenState extends State<TaskListScreen> {
                   itemCount: tasks.length,
                   itemBuilder: (context, index) {
                     final Task task = tasks[index];
+                    final bool isExpanded = _expandedTasks[task.id] ?? false;
+                    final subtaskController = _getSubtaskController(task.id);
 
-                    return ListTile(
-                      // checkbox toggles completion state
-                      leading: Checkbox(
-                        value: task.isCompleted,
-                        onChanged: (_) => _toggleTask(task),
+                    return Card(
+                      margin: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 6,
                       ),
+                      child: Column(
+                        children: [
+                          // main task row
+                          ListTile(
+                            // checkbox toggles completion state
+                            leading: Checkbox(
+                              value: task.isCompleted,
+                              onChanged: (_) => _toggleTask(task),
+                            ),
 
-                      // task title with strike-through when completed
-                      title: Text(
-                        task.title,
-                        style: TextStyle(
-                          decoration: task.isCompleted
-                              ? TextDecoration.lineThrough
-                              : TextDecoration.none,
-                        ),
-                      ),
+                            // task title with strike-through when completed
+                            title: Text(
+                              task.title,
+                              style: TextStyle(
+                                decoration: task.isCompleted
+                                    ? TextDecoration.lineThrough
+                                    : TextDecoration.none,
+                              ),
+                            ),
 
-                      // delete button removes task
-                      trailing: IconButton(
-                        icon: const Icon(Icons.delete_outline),
-                        onPressed: () => _deleteTask(task.id),
+                            // action buttons for expand and delete
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                // expand button reveals nested subtasks
+                                IconButton(
+                                  icon: Icon(
+                                    isExpanded
+                                        ? Icons.expand_less
+                                        : Icons.expand_more,
+                                  ),
+                                  onPressed: () {
+                                    setState(() {
+                                      _expandedTasks[task.id] = !isExpanded;
+                                    });
+                                  },
+                                ),
+
+                                // delete button removes task
+                                IconButton(
+                                  icon: const Icon(Icons.delete_outline),
+                                  onPressed: () => _deleteTask(task.id),
+                                ),
+                              ],
+                            ),
+                          ),
+
+                          // expanded section shows subtasks and input
+                          if (isExpanded)
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                              child: Column(
+                                children: [
+                                  // subtask input row
+                                  Row(
+                                    children: [
+                                      // text field for entering subtask title
+                                      Expanded(
+                                        child: TextField(
+                                          controller: subtaskController,
+                                          decoration: const InputDecoration(
+                                            hintText: 'Add a subtask',
+                                            border: OutlineInputBorder(),
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+
+                                      // add button submits new subtask
+                                      ElevatedButton(
+                                        onPressed: () => _addSubtask(task),
+                                        child: const Text('Add'),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 12),
+
+                                  // show nested subtasks if they exist
+                                  if (task.subtasks.isEmpty)
+                                    const Align(
+                                      alignment: Alignment.centerLeft,
+                                      child: Text('No subtasks yet'),
+                                    ),
+
+                                  // render each subtask row
+                                  ...task.subtasks.map((subtask) {
+                                    return ListTile(
+                                      contentPadding: const EdgeInsets.only(
+                                        left: 16,
+                                        right: 0,
+                                      ),
+                                      leading: const Icon(
+                                        Icons.subdirectory_arrow_right,
+                                      ),
+                                      title: Text(subtask.title),
+                                      trailing: IconButton(
+                                        icon: const Icon(Icons.delete_outline),
+                                        onPressed: () => _deleteSubtask(
+                                          task,
+                                          subtask.id,
+                                        ),
+                                      ),
+                                    );
+                                  }),
+                                ],
+                              ),
+                            ),
+                        ],
                       ),
                     );
                   },
