@@ -1,16 +1,35 @@
-# task_manager
+# Task Manager App
 
-A new Flutter project.
+This project is a Flutter task management app connected to Firebase Firestore.
 
-## Getting Started
+## Core Features
+- Add tasks
+- View tasks in real time with StreamBuilder
+- Toggle task completion
+- Delete tasks
+- Add nested subtasks
+- Delete nested subtasks
 
-This project is a starting point for a Flutter application.
+## Enhanced Features
+1. Search tasks by title
+2. Filter to show only incomplete tasks
 
-A few resources to get you started if this is your first Flutter project:
+## Validation and UX
+- Blocks empty task input
+- Blocks empty subtask input
+- Shows snackbar feedback
+- Shows loading state
+- Shows empty state
+- Shows error state
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+## Tech Used
+- Flutter
+- Firebase Core
+- Cloud Firestore
+- StatefulWidget
+- setState
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+## How to Run
+1. Run `flutter pub get`
+2. Configure Firebase with FlutterFire
+3. Run `flutter run`
